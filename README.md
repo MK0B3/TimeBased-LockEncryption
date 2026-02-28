@@ -48,9 +48,6 @@ cd TimeBased-LockEncryption
 # (Optional) Copy and edit environment config
 cp .env.example .env
 
-# Navigate to the project
-cd TimeBased-LockEncryption
-
 # Start the server
 go run cmd/server/main.go
 ```
