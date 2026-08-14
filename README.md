@@ -8,6 +8,8 @@ A timelock encryption web app built in Go. Encrypt a message that cannot be decr
 
 Uses [drand](https://drand.love/) randomness beacons and Identity-Based Encryption on the BLS12-381 curve. A message is encrypted to a *future drand round number* as its identity. That round's threshold signature does not exist yet and cannot be forged, so the ciphertext is undecryptable until the drand network publishes it — at which point the signature becomes the decryption key.
 
+![The app: a message on the left, its ciphertext and the unlocked result on the right](docs/screenshot.jpg)
+
 ## Why there is no trusted server
 
 The interesting property here is that the server never holds a key that could open a capsule early. There is no secret to leak and no admin override to abuse.
@@ -18,19 +20,23 @@ The unlock condition is enforced by a threshold signature from a distributed net
 
 1. You write a message and choose a lock duration
 2. The server converts that time into a future drand round number `r`
-3. The message is encrypted with `tlock`, using `r` as the IBE identity
-4. When drand publishes round `r`, its BLS signature `σ_r` becomes the IBE private key for that identity
+3. A random symmetric key encrypts the message; that key is sealed with IBE using `r` as the identity
+4. When drand publishes round `r`, its BLS signature `σ_r` becomes the IBE private key for that identity, which unwraps the symmetric key
 5. A background service polls for newly available rounds and decrypts capsules whose time has come
+
+Step 3 is hybrid encryption, and it is why messages are not size-limited. Encrypting the message *directly* with IBE — the obvious approach, and what this project did initially — caps the plaintext at a single hash block of 32 bytes, which rejects any realistic message.
 
 ### Beacon verification
 
-Every beacon fetched from the network is verified before it is used as a decryption key, in `pkg/beacon/client.go`:
+Every beacon fetched from the network is verified before it is used, in `pkg/beacon/client.go`:
 
 ```
 e(σ, G2) == e(H(round), pubkey)
 ```
 
-This is the standard BLS pairing check, run against the chain's public key using the scheme's RFC 9380 hash-to-curve and domain separation tag. It matters because the beacon signature *is* the decryption key — without this check, any endpoint answering an HTTP request could supply an arbitrary curve point and control when capsules open. Signatures that are well-formed but bound to a different round are rejected; see `TestVerifyBeaconRejectsSignatureFromAnotherRound`.
+This is the standard BLS pairing check, run against the chain's public key using the scheme's RFC 9380 hash-to-curve and domain separation tag. Verifying here puts the check at the boundary where beacons enter the system rather than leaving it to each caller: `tlock` verifies again before unwrapping a ciphertext, but the client also feeds the beacon cache and the `/api/beacon/signature/:round` endpoint, which hands signatures to callers with no `tlock` involved.
+
+The client implements `tlock.Network`, so decryption pulls its beacons through this verified path rather than reaching for the network directly. Signatures that are well-formed but bound to a different round are rejected — see `TestVerifyBeaconRejectsSignatureFromAnotherRound`, which uses a genuine signature from a neighbouring round, the case a length or well-formedness check cannot catch.
 
 ## Tech stack
 
@@ -45,7 +51,7 @@ This is the standard BLS pairing check, run against the chain's public key using
 
 ```
 cmd/server/main.go        # Entry point — web server and background decryption service
-pkg/crypto/ibe.go         # IBE timelock encryption/decryption via tlock
+pkg/crypto/timelock.go    # Hybrid timelock encryption/decryption via tlock
 pkg/beacon/client.go      # drand client: fetching, caching, BLS verification
 pkg/api/handlers.go       # REST API handlers
 pkg/storage/storage.go    # BoltDB persistence
@@ -117,7 +123,7 @@ The full suite reaches the real drand network to verify encryption round-trips a
 - Capsules are stored in a local BoltDB file; there is no clustering or replication
 - No authentication — anyone with access to the server can list and delete capsules
 - Decrypted plaintext is written back to the database once a capsule unlocks
-- Message size is bounded by what `tlock` will encrypt in a single ciphertext
+- Messages are capped at 64 KB, an arbitrary sanity bound rather than a cryptographic one
 
 ## License
 

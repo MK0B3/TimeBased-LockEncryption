@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"timelock-capsule/pkg/crypto"
-
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -16,15 +14,17 @@ var (
 )
 
 type Capsule struct {
-	ID           string                `json:"id"`
-	Ciphertext   *crypto.IBECiphertext `json:"ciphertext"`
-	UnlockTime   time.Time             `json:"unlock_time"`
-	Round        uint64                `json:"round"`
-	Status       CapsuleStatus         `json:"status"`
-	DecryptedMsg []byte                `json:"decrypted_message,omitempty"`
-	CreatedAt    time.Time             `json:"created_at"`
-	DecryptedAt  *time.Time            `json:"decrypted_at,omitempty"`
-	Metadata     map[string]string     `json:"metadata,omitempty"`
+	ID string `json:"id"`
+	// Ciphertext is an opaque tlock blob. encoding/json base64-encodes it on the
+	// way in and out, so it round-trips through BoltDB unchanged.
+	Ciphertext   []byte            `json:"ciphertext"`
+	UnlockTime   time.Time         `json:"unlock_time"`
+	Round        uint64            `json:"round"`
+	Status       CapsuleStatus     `json:"status"`
+	DecryptedMsg []byte            `json:"decrypted_message,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
+	DecryptedAt  *time.Time        `json:"decrypted_at,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
 type CapsuleStatus string

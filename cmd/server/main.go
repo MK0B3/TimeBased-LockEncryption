@@ -189,17 +189,16 @@ func processDecryptions(store *storage.Store, beaconClient *beacon.Client) {
 
 func decryptCapsule(ctx context.Context, store *storage.Store, beaconClient *beacon.Client, capsule *storage.Capsule) {
 	log.Printf("Decrypting capsule %s (round: %d)", capsule.ID, capsule.Round)
-	// Fetch beacon value
-	beaconValue, err := beaconClient.WaitForRound(ctx, capsule.Round)
-	if err != nil {
+
+	// Wait for the round to be published before attempting to unwrap. The beacon
+	// itself is fetched and verified inside Decrypt, via the client.
+	if _, err := beaconClient.WaitForRound(ctx, capsule.Round); err != nil {
 		log.Printf("Failed to fetch beacon for capsule %s: %v", capsule.ID, err)
 		store.UpdateCapsuleStatus(capsule.ID, storage.StatusFailed, nil)
 		return
 	}
-	publicKeyPoint := beaconClient.GetPublicKeyPoint()
-	scheme := beaconClient.GetScheme()
 
-	plaintext, err := crypto.Decrypt(capsule.Ciphertext, beaconValue.Signature, publicKeyPoint, scheme)
+	plaintext, err := crypto.Decrypt(beaconClient, capsule.Ciphertext)
 	if err != nil {
 		log.Printf("Failed to decrypt capsule %s: %v", capsule.ID, err)
 		store.UpdateCapsuleStatus(capsule.ID, storage.StatusFailed, nil)

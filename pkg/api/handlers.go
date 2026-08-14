@@ -15,6 +15,11 @@ import (
 	"github.com/google/uuid"
 )
 
+// MaxMessageBytes bounds the plaintext a capsule will accept. tlock's hybrid
+// encryption imposes no small limit of its own, so this is a sanity bound to keep
+// a single capsule from filling the database, not a cryptographic constraint.
+const MaxMessageBytes = 64 * 1024
+
 type Handler struct {
 	store  *storage.Store
 	beacon *beacon.Client
@@ -62,11 +67,18 @@ func (h *Handler) CreateCapsule(c *gin.Context) {
 		return
 	}
 
+	if len(req.Message) > MaxMessageBytes {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      fmt.Sprintf("Message is too long: %d bytes (limit is %d)", len(req.Message), MaxMessageBytes),
+			"max_bytes":  MaxMessageBytes,
+			"your_bytes": len(req.Message),
+		})
+		return
+	}
+
 	round := h.beacon.TimestampToRound(req.UnlockTime)
 	actualUnlockTime := h.beacon.RoundToTimestamp(round)
-	publicKeyPoint := h.beacon.GetPublicKeyPoint()
-	scheme := h.beacon.GetScheme()
-	ciphertext, err := crypto.Encrypt([]byte(req.Message), round, publicKeyPoint, scheme)
+	ciphertext, err := crypto.Encrypt(h.beacon, []byte(req.Message), round)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt message: " + err.Error()})
 		return
@@ -207,15 +219,19 @@ func (h *Handler) HealthCheck(c *gin.Context) {
 }
 
 type DecryptRequest struct {
-	Ciphertext interface{} `json:"ciphertext" binding:"required"`
-	Round      uint64      `json:"round" binding:"required"`
+	// Ciphertext is the base64 blob returned by POST /api/capsules. encoding/json
+	// decodes a base64 string straight into []byte.
+	Ciphertext []byte `json:"ciphertext" binding:"required"`
+	// Round is optional. The round is already recorded inside the ciphertext; it
+	// is accepted so the API can report the "not yet unlockable" case precisely
+	// rather than surfacing a decryption failure.
+	Round uint64 `json:"round"`
 }
 
 type DecryptResponse struct {
-	Message         string    `json:"message"`
-	DecryptedAt     time.Time `json:"decrypted_at"`
-	Round           uint64    `json:"round"`
-	BeaconSignature string    `json:"beacon_signature"` //  signature used
+	Message     string    `json:"message"`
+	DecryptedAt time.Time `json:"decrypted_at"`
+	Round       uint64    `json:"round"`
 }
 
 func (h *Handler) DecryptCapsule(c *gin.Context) {
@@ -224,43 +240,40 @@ func (h *Handler) DecryptCapsule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
 		return
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	latestBeacon, err := h.beacon.GetLatestBeacon(ctx)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get beacon info"})
-		return
-	}
-	if req.Round > latestBeacon.Round {
-		roundTime := h.beacon.RoundToTimestamp(req.Round)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":          "Beacon round not yet available",
-			"current_round":  latestBeacon.Round,
-			"required_round": req.Round,
-			"unlock_time":    roundTime,
-		})
-		return
-	}
-	beaconValue, err := h.beacon.WaitForRound(ctx, req.Round)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch beacon signature: " + err.Error()})
-		return
-	}
-	publicKeyPoint := h.beacon.GetPublicKeyPoint()
-	scheme := h.beacon.GetScheme()
 
-	plaintext, err := crypto.Decrypt(req.Ciphertext, beaconValue.Signature, publicKeyPoint, scheme)
+	// If the caller told us which round this capsule is for, answer the "not yet"
+	// case with the unlock time instead of letting decryption fail obscurely.
+	if req.Round > 0 {
+		latestBeacon, err := h.beacon.GetLatestBeacon(ctx)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get beacon info"})
+			return
+		}
+		if req.Round > latestBeacon.Round {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":          "Beacon round not yet available",
+				"current_round":  latestBeacon.Round,
+				"required_round": req.Round,
+				"unlock_time":    h.beacon.RoundToTimestamp(req.Round),
+			})
+			return
+		}
+	}
+
+	plaintext, err := crypto.Decrypt(h.beacon, req.Ciphertext)
 	if err != nil {
 		log.Printf("Decryption failed for round %d: %v", req.Round, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decrypt: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to decrypt: " + err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, DecryptResponse{
-		Message:         string(plaintext),
-		DecryptedAt:     time.Now(),
-		Round:           req.Round,
-		BeaconSignature: fmt.Sprintf("%x", beaconValue.Signature),
+		Message:     string(plaintext),
+		DecryptedAt: time.Now(),
+		Round:       req.Round,
 	})
 }
 func (h *Handler) GetBeaconSignature(c *gin.Context) {

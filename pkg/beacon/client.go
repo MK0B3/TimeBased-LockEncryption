@@ -144,9 +144,12 @@ func (c *Client) RoundToTimestamp(round uint64) time.Time {
 // the given round by verifying the BLS pairing equation e(sig, G2) == e(H(round), pubkey)
 // against the chain's public key.
 //
-// This check is what makes the timelock guarantee meaningful. The beacon signature is
-// the decryption key, so accepting an unverified one would let any endpoint that can
-// answer an HTTP request hand us an arbitrary point and control when capsules open.
+// Verifying here puts the check at the boundary where beacons enter the system,
+// rather than relying on each consumer to do it. tlock.TimeUnlock verifies again
+// before unwrapping a ciphertext, so the capsule path is covered either way, but
+// GetBeacon also feeds the cache and the /api/beacon/signature endpoint, which
+// hands signatures to callers with no tlock involved.
+//
 // The scheme returned by the network carries the correct hash-to-curve function and
 // domain separation tag for the configured chain, so this stays correct across chains
 // with different signature groups.
@@ -169,6 +172,54 @@ func (c *Client) verifyBeacon(round uint64, signature []byte) error {
 
 	return nil
 }
+
+// The methods below let *Client satisfy tlock.Network, so that tlock's hybrid
+// encryption talks to this client rather than reaching for the network directly.
+// The payoff is that every beacon tlock consumes has already been through
+// verifyBeacon; the trust boundary stays in one place.
+
+// ChainHash returns the configured drand chain hash.
+func (c *Client) ChainHash() string {
+	return c.chainHash
+}
+
+// Current returns the round number that corresponds to the given time.
+func (c *Client) Current(t time.Time) uint64 {
+	return c.network.RoundNumber(t)
+}
+
+// PublicKey returns the chain's group public key.
+func (c *Client) PublicKey() kyber.Point {
+	return c.network.PublicKey()
+}
+
+// Scheme returns the chain's cryptographic scheme.
+func (c *Client) Scheme() crypto.Scheme {
+	return c.network.Scheme()
+}
+
+// Signature returns the verified beacon signature for a round. tlock calls this
+// when unwrapping a ciphertext, so decryption inherits the verification in
+// GetBeacon rather than trusting whatever an endpoint returns.
+func (c *Client) Signature(round uint64) ([]byte, error) {
+	beaconValue, err := c.GetBeacon(context.Background(), round)
+	if err != nil {
+		return nil, err
+	}
+	return beaconValue.Signature, nil
+}
+
+// SwitchChainHash refuses to change chains at runtime. tlock offers this so a
+// ciphertext can name its own chain, but honouring that would let a ciphertext
+// redirect us to a chain we never configured, including a chained one that
+// cannot carry a timelock guarantee.
+func (c *Client) SwitchChainHash(hash string) error {
+	if hash == c.chainHash {
+		return nil
+	}
+	return fmt.Errorf("refusing to switch to chain %s: this server is pinned to %s", hash, c.chainHash)
+}
+
 func (c *Client) GetChainInfo() *ChainInfo {
 	pubKeyPoint := c.network.PublicKey()
 	pubKeyBytes, _ := pubKeyPoint.MarshalBinary()
@@ -180,18 +231,6 @@ func (c *Client) GetChainInfo() *ChainInfo {
 		Scheme:      c.network.Scheme().Name,
 	}
 }
-func (c *Client) GetPublicKey() ([]byte, error) {
-	pubKeyPoint := c.network.PublicKey()
-	return pubKeyPoint.MarshalBinary()
-}
-func (c *Client) GetPublicKeyPoint() kyber.Point {
-	return c.network.PublicKey()
-}
-
-func (c *Client) GetScheme() crypto.Scheme {
-	return c.network.Scheme()
-}
-
 func (c *Client) WaitForRound(ctx context.Context, round uint64) (*BeaconValue, error) {
 	currentTime := time.Now()
 	roundTime := c.RoundToTimestamp(round)
