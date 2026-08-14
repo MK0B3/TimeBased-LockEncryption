@@ -1,11 +1,10 @@
 # Time-Locked Message Capsule - Makefile
 
-.PHONY: all build run test clean deps help
+.PHONY: all deps build build-prod run test test-short test-coverage bench fmt vet lint clean clean-all setup help
 
 # Variables
 BINARY_DIR=bin
 SERVER_BINARY=$(BINARY_DIR)/server
-DECRYPT_BINARY=$(BINARY_DIR)/decrypt-service
 DATA_DIR=data
 
 # Default target
@@ -17,57 +16,38 @@ deps:
 	go mod download
 	go mod tidy
 
-# Build both binaries
-build: $(SERVER_BINARY) $(DECRYPT_BINARY)
-
-# Build server
-$(SERVER_BINARY):
+# Build the server
+build:
 	@echo "Building server..."
 	@mkdir -p $(BINARY_DIR)
-	go build -o $(SERVER_BINARY) cmd/server/main.go
-
-# Build decryption service
-$(DECRYPT_BINARY):
-	@echo "Building decryption service..."
-	@mkdir -p $(BINARY_DIR)
-	go build -o $(DECRYPT_BINARY) cmd/decrypt-service/main.go
+	go build -o $(SERVER_BINARY) ./cmd/server
 
 # Build with optimizations for production
 build-prod:
 	@echo "Building for production..."
 	@mkdir -p $(BINARY_DIR)
-	go build -ldflags="-s -w" -o $(SERVER_BINARY) cmd/server/main.go
-	go build -ldflags="-s -w" -o $(DECRYPT_BINARY) cmd/decrypt-service/main.go
+	go build -ldflags="-s -w" -o $(SERVER_BINARY) ./cmd/server
 
-# Run server in development mode
-run-server: $(SERVER_BINARY)
+# Run the server
+run: build
 	@echo "Starting server..."
 	@mkdir -p $(DATA_DIR)
 	./$(SERVER_BINARY)
 
-# Run decryption service
-run-decrypt: $(DECRYPT_BINARY)
-	@echo "Starting decryption service..."
-	@mkdir -p $(DATA_DIR)
-	./$(DECRYPT_BINARY)
-
-# Run both services (requires GNU parallel or similar)
-run-all: build
-	@echo "Starting all services..."
-	@mkdir -p $(DATA_DIR)
-	@echo "Run these in separate terminals:"
-	@echo "  make run-server"
-	@echo "  make run-decrypt"
-
-# Run tests
+# Run all tests (requires network access to drand)
 test:
 	@echo "Running tests..."
 	go test -v ./...
 
+# Run only tests that do not need network access
+test-short:
+	@echo "Running short tests..."
+	go test -short ./...
+
 # Run tests with coverage
 test-coverage:
 	@echo "Running tests with coverage..."
-	go test -v -coverprofile=coverage.out ./...
+	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
@@ -80,6 +60,11 @@ bench:
 fmt:
 	@echo "Formatting code..."
 	go fmt ./...
+
+# Vet code
+vet:
+	@echo "Vetting code..."
+	go vet ./...
 
 # Lint code (requires golangci-lint)
 lint:
@@ -102,9 +87,6 @@ clean-all: clean
 setup:
 	@echo "Setting up development environment..."
 	@mkdir -p $(DATA_DIR)
-	@mkdir -p web/static/css
-	@mkdir -p web/static/js
-	@mkdir -p web/templates
 	@cp .env.example .env 2>/dev/null || true
 	@echo "Setup complete! Edit .env if needed."
 
@@ -113,14 +95,15 @@ help:
 	@echo "Time-Locked Message Capsule - Available Commands:"
 	@echo ""
 	@echo "  make deps          - Install Go dependencies"
-	@echo "  make build         - Build server and decryption service"
+	@echo "  make build         - Build the server"
 	@echo "  make build-prod    - Build with production optimizations"
-	@echo "  make run-server    - Run the web server"
-	@echo "  make run-decrypt   - Run the decryption service"
-	@echo "  make test          - Run tests"
+	@echo "  make run           - Build and run the web server"
+	@echo "  make test          - Run all tests (needs network)"
+	@echo "  make test-short    - Run tests that do not need network"
 	@echo "  make test-coverage - Run tests with coverage report"
 	@echo "  make bench         - Run benchmarks"
 	@echo "  make fmt           - Format code"
+	@echo "  make vet           - Vet code"
 	@echo "  make lint          - Lint code (requires golangci-lint)"
 	@echo "  make clean         - Remove build artifacts"
 	@echo "  make clean-all     - Remove build artifacts and database"

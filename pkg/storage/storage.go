@@ -16,15 +16,15 @@ var (
 )
 
 type Capsule struct {
-	ID             string                  `json:"id"`
-	Ciphertext     *crypto.IBECiphertext   `json:"ciphertext"`
-	UnlockTime     time.Time               `json:"unlock_time"`
-	Round          uint64                  `json:"round"`
-	Status         CapsuleStatus           `json:"status"`
-	DecryptedMsg   []byte                  `json:"decrypted_message,omitempty"`
-	CreatedAt      time.Time               `json:"created_at"`
-	DecryptedAt    *time.Time              `json:"decrypted_at,omitempty"`
-	Metadata       map[string]string       `json:"metadata,omitempty"`
+	ID           string                `json:"id"`
+	Ciphertext   *crypto.IBECiphertext `json:"ciphertext"`
+	UnlockTime   time.Time             `json:"unlock_time"`
+	Round        uint64                `json:"round"`
+	Status       CapsuleStatus         `json:"status"`
+	DecryptedMsg []byte                `json:"decrypted_message,omitempty"`
+	CreatedAt    time.Time             `json:"created_at"`
+	DecryptedAt  *time.Time            `json:"decrypted_at,omitempty"`
+	Metadata     map[string]string     `json:"metadata,omitempty"`
 }
 
 type CapsuleStatus string

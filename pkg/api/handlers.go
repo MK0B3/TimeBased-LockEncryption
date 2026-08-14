@@ -14,16 +14,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
 type Handler struct {
 	store  *storage.Store
 	beacon *beacon.Client
 }
+
 func NewHandler(store *storage.Store, beaconClient *beacon.Client) *Handler {
 	return &Handler{
 		store:  store,
 		beacon: beaconClient,
 	}
 }
+
 type CreateCapsuleRequest struct {
 	Message    string            `json:"message" binding:"required"`
 	UnlockTime time.Time         `json:"unlock_time" binding:"required"`
@@ -31,22 +34,23 @@ type CreateCapsuleRequest struct {
 }
 
 type CreateCapsuleResponse struct {
-	CapsuleID   string         `json:"capsule_id"`
-	UnlockTime  time.Time      `json:"unlock_time"`
-	RoundNumber uint64         `json:"round_number"`
-	Status      string         `json:"status"`
-	Ciphertext  interface{}    `json:"ciphertext"` //  actual encrypted data
+	CapsuleID   string      `json:"capsule_id"`
+	UnlockTime  time.Time   `json:"unlock_time"`
+	RoundNumber uint64      `json:"round_number"`
+	Status      string      `json:"status"`
+	Ciphertext  interface{} `json:"ciphertext"` //  actual encrypted data
 }
 
 type GetCapsuleResponse struct {
-	CapsuleID       string    `json:"capsule_id"`
-	Status          string    `json:"status"`
-	UnlockTime      time.Time `json:"unlock_time"`
-	CreatedAt       time.Time `json:"created_at"`
-	DecryptedAt     *time.Time `json:"decrypted_at,omitempty"`
-	Message         string    `json:"message,omitempty"`
-	Metadata        map[string]string `json:"metadata,omitempty"`
+	CapsuleID   string            `json:"capsule_id"`
+	Status      string            `json:"status"`
+	UnlockTime  time.Time         `json:"unlock_time"`
+	CreatedAt   time.Time         `json:"created_at"`
+	DecryptedAt *time.Time        `json:"decrypted_at,omitempty"`
+	Message     string            `json:"message,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
 }
+
 func (h *Handler) CreateCapsule(c *gin.Context) {
 	var req CreateCapsuleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -69,7 +73,7 @@ func (h *Handler) CreateCapsule(c *gin.Context) {
 	}
 	capsule := &storage.Capsule{
 		ID:         uuid.New().String(),
-		Ciphertext: ciphertext, 
+		Ciphertext: ciphertext,
 		UnlockTime: actualUnlockTime,
 		Round:      round,
 		Status:     storage.StatusLocked,
@@ -86,7 +90,7 @@ func (h *Handler) CreateCapsule(c *gin.Context) {
 		UnlockTime:  actualUnlockTime,
 		RoundNumber: round,
 		Status:      string(capsule.Status),
-		Ciphertext:  ciphertext, 
+		Ciphertext:  ciphertext,
 	})
 }
 func (h *Handler) GetCapsule(c *gin.Context) {
@@ -99,12 +103,12 @@ func (h *Handler) GetCapsule(c *gin.Context) {
 	}
 
 	response := GetCapsuleResponse{
-		CapsuleID:  capsule.ID,
-		Status:     string(capsule.Status),
-		UnlockTime: capsule.UnlockTime,
-		CreatedAt:  capsule.CreatedAt,
+		CapsuleID:   capsule.ID,
+		Status:      string(capsule.Status),
+		UnlockTime:  capsule.UnlockTime,
+		CreatedAt:   capsule.CreatedAt,
 		DecryptedAt: capsule.DecryptedAt,
-		Metadata:   capsule.Metadata,
+		Metadata:    capsule.Metadata,
 	}
 	if capsule.Status == storage.StatusUnlocked && capsule.DecryptedMsg != nil {
 		response.Message = string(capsule.DecryptedMsg)
@@ -138,12 +142,12 @@ func (h *Handler) ListCapsules(c *gin.Context) {
 	responses := make([]GetCapsuleResponse, 0, len(capsules))
 	for _, capsule := range capsules {
 		response := GetCapsuleResponse{
-			CapsuleID:  capsule.ID,
-			Status:     string(capsule.Status),
-			UnlockTime: capsule.UnlockTime,
-			CreatedAt:  capsule.CreatedAt,
+			CapsuleID:   capsule.ID,
+			Status:      string(capsule.Status),
+			UnlockTime:  capsule.UnlockTime,
+			CreatedAt:   capsule.CreatedAt,
 			DecryptedAt: capsule.DecryptedAt,
-			Metadata:   capsule.Metadata,
+			Metadata:    capsule.Metadata,
 		}
 
 		if capsule.Status == storage.StatusUnlocked && capsule.DecryptedMsg != nil {
@@ -174,11 +178,6 @@ func (h *Handler) GetStats(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, stats)
 }
-
-
-
-
-
 
 func (h *Handler) GetBeaconInfo(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -213,26 +212,18 @@ type DecryptRequest struct {
 }
 
 type DecryptResponse struct {
-	Message         string `json:"message"`
+	Message         string    `json:"message"`
 	DecryptedAt     time.Time `json:"decrypted_at"`
-	Round           uint64 `json:"round"`
-	BeaconSignature string `json:"beacon_signature"` //  signature used
+	Round           uint64    `json:"round"`
+	BeaconSignature string    `json:"beacon_signature"` //  signature used
 }
 
-func getMapKeys(m map[string]interface{}) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
 func (h *Handler) DecryptCapsule(c *gin.Context) {
 	var req DecryptRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
 		return
 	}
-	log.Printf("[DEBUG] Decrypt request - Round: %d, Ciphertext type: %T", req.Round, req.Ciphertext)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	latestBeacon, err := h.beacon.GetLatestBeacon(ctx)
@@ -243,10 +234,10 @@ func (h *Handler) DecryptCapsule(c *gin.Context) {
 	if req.Round > latestBeacon.Round {
 		roundTime := h.beacon.RoundToTimestamp(req.Round)
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Beacon round not yet available",
-			"current_round": latestBeacon.Round,
+			"error":          "Beacon round not yet available",
+			"current_round":  latestBeacon.Round,
 			"required_round": req.Round,
-			"unlock_time": roundTime,
+			"unlock_time":    roundTime,
 		})
 		return
 	}
@@ -258,43 +249,12 @@ func (h *Handler) DecryptCapsule(c *gin.Context) {
 	publicKeyPoint := h.beacon.GetPublicKeyPoint()
 	scheme := h.beacon.GetScheme()
 
-	if ctMap, ok := req.Ciphertext.(map[string]interface{}); ok {
-		log.Printf("[DEBUG] Ciphertext map keys: %v", getMapKeys(ctMap))
-		if uVal, hasU := ctMap["u"]; hasU {
-			log.Printf("[DEBUG] U field type: %T", uVal)
-		}
-		if vVal, hasV := ctMap["v"]; hasV {
-			log.Printf("[DEBUG] V field type: %T", vVal)
-		}
-		if wVal, hasW := ctMap["w"]; hasW {
-			log.Printf("[DEBUG] W field type: %T", wVal)
-		}
-	}
-
 	plaintext, err := crypto.Decrypt(req.Ciphertext, beaconValue.Signature, publicKeyPoint, scheme)
 	if err != nil {
-		log.Printf("[ERROR] Decryption failed for round %d: %v", req.Round, err)
-		log.Printf("[ERROR] Beacon signature: %x", beaconValue.Signature)
-		log.Printf("[ERROR] Public key: %x", publicKeyPoint)
-		log.Printf("[ERROR] Ciphertext type: %T", req.Ciphertext)
-		if ctMap, ok := req.Ciphertext.(map[string]interface{}); ok {
-			if u, hasU := ctMap["u"]; hasU {
-				log.Printf("[ERROR] Ciphertext U type: %T", u)
-			}
-			if v, hasV := ctMap["v"]; hasV {
-				log.Printf("[ERROR] Ciphertext V: %v", v)
-			}
-			if w, hasW := ctMap["w"]; hasW {
-				log.Printf("[ERROR] Ciphertext W: %v", w)
-			}
-			if ctRound, hasRound := ctMap["round"]; hasRound {
-				log.Printf("[ERROR] Ciphertext round field: %v", ctRound)
-			}
-		}
+		log.Printf("Decryption failed for round %d: %v", req.Round, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decrypt: " + err.Error()})
 		return
 	}
-	log.Printf("[DEBUG] Decryption successful!")
 
 	c.JSON(http.StatusOK, DecryptResponse{
 		Message:         string(plaintext),
@@ -323,9 +283,9 @@ func (h *Handler) GetBeaconSignature(c *gin.Context) {
 	if round > latestBeacon.Round {
 		roundTime := h.beacon.RoundToTimestamp(round)
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Round not yet available",
+			"error":         "Round not yet available",
 			"current_round": latestBeacon.Round,
-			"unlock_time": roundTime,
+			"unlock_time":   roundTime,
 		})
 		return
 	}
@@ -338,7 +298,7 @@ func (h *Handler) GetBeaconSignature(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"round": beaconValue.Round,
+		"round":     beaconValue.Round,
 		"signature": fmt.Sprintf("%x", beaconValue.Signature),
 		"timestamp": beaconValue.Timestamp,
 	})

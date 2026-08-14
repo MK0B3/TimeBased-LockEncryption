@@ -9,9 +9,19 @@ import (
 	tlockhttp "github.com/drand/tlock/networks/http"
 )
 
+// skipIfShort skips tests that reach out to the live drand network.
+func skipIfShort(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping test that requires network access to drand")
+	}
+}
+
 // TestEncryptDecryptWithRealDrand tests the complete encryption/decryption flow
 // using a real drand beacon signature from the past
 func TestEncryptDecryptWithRealDrand(t *testing.T) {
+	skipIfShort(t)
+
 	// Use drand quicknet (unchained) - required for tlock
 	// Quicknet is an unchained drand network optimized for timelock encryption
 	chainHash := "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
@@ -90,6 +100,7 @@ func TestEncryptDecryptWithRealDrand(t *testing.T) {
 // TestEncryptDecryptWithWrongSignature tests that decryption fails with wrong signature
 // This test is now ENABLED - we use proper tlock that validates signatures!
 func TestEncryptDecryptWithWrongSignature(t *testing.T) {
+	skipIfShort(t)
 	// Use drand quicknet (unchained) - required for tlock
 	// Quicknet is an unchained drand network optimized for timelock encryption
 	chainHash := "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
@@ -133,6 +144,7 @@ func TestEncryptDecryptWithWrongSignature(t *testing.T) {
 
 // TestIBEParamsCreation tests that IBE params can be created from drand's public key
 func TestIBEParamsCreation(t *testing.T) {
+	skipIfShort(t)
 	// Use drand quicknet (unchained) - required for tlock
 	// Quicknet is an unchained drand network optimized for timelock encryption
 	chainHash := "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"

@@ -26,13 +26,13 @@ func main() {
 	port := getEnv("SERVER_PORT", "8080")
 	host := getEnv("SERVER_HOST", "localhost")
 	dbPath := getEnv("DB_PATH", "./data/capsules.db")
-	chainHash := getEnv("DRAND_CHAIN_HASH", "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971") 
+	chainHash := getEnv("DRAND_CHAIN_HASH", "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971")
 	drandURLs := strings.Split(getEnv("DRAND_URLS", "https://api.drand.sh,https://drand.cloudflare.com"), ",")
 	if err := os.MkdirAll("./data", 0755); err != nil {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 
-	// Initialize beacon 
+	// Initialize beacon
 	log.Println("Connecting to drand beacon...")
 	beaconClient, err := beacon.NewClient(drandURLs, chainHash)
 	if err != nil {
@@ -50,7 +50,7 @@ func main() {
 	defer store.Close()
 	log.Println("Storage initialized")
 
-	// Initialize API 
+	// Initialize API
 	handler := api.NewHandler(store, beaconClient)
 
 	// Start  decryption service
@@ -167,7 +167,7 @@ func safeProcessDecryptions(store *storage.Store, beaconClient *beacon.Client) {
 func processDecryptions(store *storage.Store, beaconClient *beacon.Client) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-    // Get latest beacon round
+	// Get latest beacon round
 	latestBeacon, err := beaconClient.GetLatestBeacon(ctx)
 	if err != nil {
 		log.Printf("Decryption service: Failed to get latest beacon: %v", err)

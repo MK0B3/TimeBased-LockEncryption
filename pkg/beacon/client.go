@@ -2,16 +2,15 @@ package beacon
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/drand/drand/v2/common"
 	"github.com/drand/drand/v2/crypto"
 	"github.com/drand/kyber"
-	bls "github.com/drand/kyber-bls12381"
 	tlockhttp "github.com/drand/tlock/networks/http"
 )
 
@@ -116,7 +115,7 @@ func (c *Client) GetBeacon(ctx context.Context, round uint64) (*BeaconValue, err
 
 	beaconValue := &BeaconValue{
 		Round:      round,
-		Randomness: signature, 
+		Randomness: signature,
 		Signature:  signature,
 		Timestamp:  timestamp,
 	}
@@ -141,40 +140,34 @@ func (c *Client) RoundToTimestamp(round uint64) time.Time {
 	return time.Unix(timestamp, 0)
 }
 
+// verifyBeacon checks that a signature is a genuine drand threshold signature for
+// the given round by verifying the BLS pairing equation e(sig, G2) == e(H(round), pubkey)
+// against the chain's public key.
+//
+// This check is what makes the timelock guarantee meaningful. The beacon signature is
+// the decryption key, so accepting an unverified one would let any endpoint that can
+// answer an HTTP request hand us an arbitrary point and control when capsules open.
+// The scheme returned by the network carries the correct hash-to-curve function and
+// domain separation tag for the configured chain, so this stays correct across chains
+// with different signature groups.
 func (c *Client) verifyBeacon(round uint64, signature []byte) error {
 	if len(signature) == 0 {
 		return fmt.Errorf("empty signature")
 	}
-	if len(signature) != 48 {
-		return fmt.Errorf("invalid signature length: %d bytes (expected 48)", len(signature))
+
+	scheme := c.network.Scheme()
+	publicKey := c.network.PublicKey()
+
+	beacon := &common.Beacon{
+		Round:     round,
+		Signature: common.HexBytes(signature),
 	}
 
-	_ = c.network.Scheme()     
-	_ = c.network.PublicKey()   
-	suite := bls.NewBLS12381Suite()
-	signaturePoint := suite.G1().Point()
-	if err := signaturePoint.UnmarshalBinary(signature); err != nil {
-		return fmt.Errorf("failed to unmarshal signature: %w", err)
-	}
-
-	identityG1 := suite.G1().Point().Null()
-	if signaturePoint.Equal(identityG1) {
-		return fmt.Errorf("signature is the identity element (invalid)")
+	if err := scheme.VerifyBeacon(beacon, publicKey); err != nil {
+		return fmt.Errorf("BLS signature verification failed for round %d: %w", round, err)
 	}
 
 	return nil
-}
-
-func hashRoundToPoint(round uint64, scheme crypto.Scheme) (kyber.Point, error) {
-	roundBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(roundBytes, round)
-
-	suite := bls.NewBLS12381Suite()
-
-	messagePoint := scheme.SigGroup.Point()
-	messagePoint = messagePoint.Pick(suite.XOF(roundBytes))
-
-	return messagePoint, nil
 }
 func (c *Client) GetChainInfo() *ChainInfo {
 	pubKeyPoint := c.network.PublicKey()

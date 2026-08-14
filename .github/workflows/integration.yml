@@ -1,0 +1,24 @@
+name: Integration
+
+# The full suite verifies encryption, decryption and BLS beacon verification against
+# the live drand network. It is kept out of the per-push CI so that a drand outage
+# cannot turn the main build red, and runs on a schedule instead.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  drand:
+    name: Test against live drand
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test -v ./...
