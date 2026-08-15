@@ -435,3 +435,28 @@ func TestGetBeaconSignatureInvalidRound(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, response["error"], "Invalid round")
 }
+
+// TestListCapsulesRejectsUnknownStatus checks that a nonsense filter is reported
+// rather than silently returning an empty list, which reads as "no capsules".
+func TestListCapsulesRejectsUnknownStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	store, err := storage.NewStore(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer store.Close()
+
+	handler := &Handler{store: store}
+
+	router := gin.New()
+	router.GET("/api/capsules", handler.ListCapsules)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/capsules?status=bogus", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Contains(t, body, "valid_statuses")
+}

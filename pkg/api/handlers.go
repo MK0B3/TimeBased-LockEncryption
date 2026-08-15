@@ -114,6 +114,67 @@ func (h *Handler) GetCapsule(c *gin.Context) {
 		return
 	}
 
+	c.JSON(http.StatusOK, toCapsuleResponse(capsule))
+}
+
+// allStatuses is the set a capsule can be in, and the order ListCapsules returns
+// them in when no filter is given.
+var allStatuses = []storage.CapsuleStatus{
+	storage.StatusLocked,
+	storage.StatusUnlocked,
+	storage.StatusFailed,
+}
+
+func (h *Handler) ListCapsules(c *gin.Context) {
+	requested := storage.CapsuleStatus(c.Query("status"))
+
+	statuses := allStatuses
+	if requested != "" {
+		if !isKnownStatus(requested) {
+			valid := make([]string, 0, len(allStatuses))
+			for _, s := range allStatuses {
+				valid = append(valid, string(s))
+			}
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":          fmt.Sprintf("Unknown status %q", requested),
+				"valid_statuses": valid,
+			})
+			return
+		}
+		statuses = []storage.CapsuleStatus{requested}
+	}
+
+	var capsules []*storage.Capsule
+	for _, status := range statuses {
+		found, err := h.store.GetCapsulesByStatus(status)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list capsules"})
+			return
+		}
+		capsules = append(capsules, found...)
+	}
+
+	responses := make([]GetCapsuleResponse, 0, len(capsules))
+	for _, capsule := range capsules {
+		responses = append(responses, toCapsuleResponse(capsule))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"capsules": responses})
+}
+
+func isKnownStatus(status storage.CapsuleStatus) bool {
+	for _, s := range allStatuses {
+		if s == status {
+			return true
+		}
+	}
+	return false
+}
+
+// toCapsuleResponse converts a stored capsule into its API representation. The
+// plaintext is included only once the capsule has actually unlocked, so a locked
+// capsule cannot leak its contents through any listing.
+func toCapsuleResponse(capsule *storage.Capsule) GetCapsuleResponse {
 	response := GetCapsuleResponse{
 		CapsuleID:   capsule.ID,
 		Status:      string(capsule.Status),
@@ -122,54 +183,12 @@ func (h *Handler) GetCapsule(c *gin.Context) {
 		DecryptedAt: capsule.DecryptedAt,
 		Metadata:    capsule.Metadata,
 	}
+
 	if capsule.Status == storage.StatusUnlocked && capsule.DecryptedMsg != nil {
 		response.Message = string(capsule.DecryptedMsg)
 	}
 
-	c.JSON(http.StatusOK, response)
-}
-func (h *Handler) ListCapsules(c *gin.Context) {
-	status := c.Query("status")
-
-	var capsules []*storage.Capsule
-	var err error
-
-	if status != "" {
-		capsules, err = h.store.GetCapsulesByStatus(storage.CapsuleStatus(status))
-	} else {
-		locked, _ := h.store.GetCapsulesByStatus(storage.StatusLocked)
-		unlocked, _ := h.store.GetCapsulesByStatus(storage.StatusUnlocked)
-		failed, _ := h.store.GetCapsulesByStatus(storage.StatusFailed)
-
-		capsules = append(capsules, locked...)
-		capsules = append(capsules, unlocked...)
-		capsules = append(capsules, failed...)
-	}
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list capsules"})
-		return
-	}
-
-	responses := make([]GetCapsuleResponse, 0, len(capsules))
-	for _, capsule := range capsules {
-		response := GetCapsuleResponse{
-			CapsuleID:   capsule.ID,
-			Status:      string(capsule.Status),
-			UnlockTime:  capsule.UnlockTime,
-			CreatedAt:   capsule.CreatedAt,
-			DecryptedAt: capsule.DecryptedAt,
-			Metadata:    capsule.Metadata,
-		}
-
-		if capsule.Status == storage.StatusUnlocked && capsule.DecryptedMsg != nil {
-			response.Message = string(capsule.DecryptedMsg)
-		}
-
-		responses = append(responses, response)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"capsules": responses})
+	return response
 }
 
 func (h *Handler) DeleteCapsule(c *gin.Context) {
