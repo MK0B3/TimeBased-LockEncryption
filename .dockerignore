@@ -1,0 +1,26 @@
+# Build artifacts and local state — never belong in the image
+bin/
+data/
+*.exe
+*.exe~
+*.db
+*.out
+
+# Local config and editor/tooling directories
+.env
+.env.local
+.vscode/
+.claude/
+.qodo/
+.git/
+.github/
+
+# Docs and scripts that the running server does not need
+docs/
+README.md
+LICENSE
+Makefile
+start-server.bat
+Dockerfile
+.dockerignore
+docker-compose.yml

@@ -35,3 +35,41 @@ jobs:
 
       - name: Test
         run: go test -short ./...
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t timelock-capsule:ci .
+
+      # Starting the container proves more than the build does: it catches a
+      # missing web/ directory, absent CA certificates, and binding to localhost
+      # instead of all interfaces -- none of which fail at build time.
+      - name: Start container
+        run: docker run -d --name tlc -p 8080:8080 timelock-capsule:ci
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/api/health > /dev/null; then
+              echo "healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "container did not become healthy"
+          docker logs tlc
+          exit 1
+
+      - name: Check the UI and its assets are served
+        run: |
+          curl -sf http://localhost:8080/ > /dev/null
+          curl -sf http://localhost:8080/static/css/style.css > /dev/null
+          curl -sf http://localhost:8080/static/js/app.js > /dev/null
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f tlc

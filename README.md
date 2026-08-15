@@ -60,6 +60,28 @@ web/                      # UI templates and static assets
 
 ## Run
 
+### With Docker
+
+No Go toolchain needed:
+
+```bash
+git clone https://github.com/MK0B3/TimeBased-LockEncryption.git
+cd TimeBased-LockEncryption
+
+docker compose up
+```
+
+Open **http://localhost:8080**. Capsules persist in a named volume across restarts; `docker compose down -v` discards them.
+
+Or without compose:
+
+```bash
+docker build -t timelock-capsule .
+docker run -p 8080:8080 -v capsules:/app/data timelock-capsule
+```
+
+### With Go
+
 Requires [Go 1.22+](https://go.dev/dl/).
 
 ```bash
@@ -70,9 +92,7 @@ cp .env.example .env      # optional — defaults work as-is
 go run ./cmd/server
 ```
 
-Open **http://localhost:8080**.
-
-Or with make: `make run`.
+Open **http://localhost:8080**. Or with make: `make run`.
 
 ## Configuration
 

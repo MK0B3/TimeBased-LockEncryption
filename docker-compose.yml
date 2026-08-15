@@ -1,0 +1,19 @@
+services:
+  server:
+    build: .
+    image: timelock-capsule
+    container_name: timelock-capsule
+    ports:
+      - "8080:8080"
+    environment:
+      # How often the background service looks for capsules whose round has
+      # published. Lower it to a few seconds when demoing short locks.
+      DECRYPT_CHECK_INTERVAL: 30s
+    volumes:
+      # Named volume so capsules survive `docker compose down`. Use
+      # `docker compose down -v` to discard them.
+      - capsules:/app/data
+    restart: unless-stopped
+
+volumes:
+  capsules:
